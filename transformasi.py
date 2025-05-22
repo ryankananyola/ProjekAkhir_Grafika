@@ -1,6 +1,3 @@
-# FILE: paint_transformasi.py
-# Pastikan sudah install pygame: pip install pygame
-
 import pygame
 import math
 import sys
@@ -10,7 +7,7 @@ screen = pygame.display.set_mode((1150, 700))
 pygame.display.set_caption("Paint 2D Transformasi")
 clock = pygame.time.Clock()
 
-# Warna
+# Warna dasar
 YELLOW = (255, 255, 0)
 CYAN = (0, 255, 255)
 RED = (255, 0, 0)
@@ -27,11 +24,12 @@ objects = []
 selected_index = -1
 selected_color_type = "fill"
 last_button_action = None
-
 dragging = False
 drag_offset = [0, 0]
+
 font = pygame.font.SysFont(None, 24)
 
+# UI tombol
 button_panel = [
     {"label": "Bintang", "action": "add_star"},
     {"label": "Oval", "action": "add_oval"},
@@ -52,8 +50,8 @@ button_panel = [
     {"label": "Hapus", "action": "delete"}
 ]
 
-button_rects = [ (pygame.Rect(20, 20 + i*40, 160, 32), b) for i, b in enumerate(button_panel) ]
-color_rects = [ (pygame.Rect(200 + i*45, 20, 40, 40), color) for i, color in enumerate(colors) ]
+button_rects = [(pygame.Rect(20, 20 + i * 40, 160, 32), b) for i, b in enumerate(button_panel)]
+color_rects = [(pygame.Rect(200 + i * 45, 20, 40, 40), color) for i, color in enumerate(colors)]
 
 def draw_buttons():
     for rect, b in button_rects:
@@ -70,36 +68,28 @@ def draw_color_choices():
 def draw_help_panel():
     help_texts = [
         "== Petunjuk Penggunaan:",
-        "",
-        "== Tambah Objek:",
-        "   - Bintang / Oval / Rect",
-        "   - Kerucut 3D / Limas Segitiga 3D",
-        "",
-        "== Ubah Warna:",
-        "   - Isi Warna: ubah warna dalam objek",
-        "   - Border Warna: ubah warna pinggir objek",
-        "",
-        "== Transformasi:",
-        "   - Perbesar / Perkecil objek",
-        "   - Putar Kiri / Kanan (bintang, oval, kerucut, limas)",
-        "   - Geser (tombol panah)",
-        "",
-        "== Lainnya:",
-        "   - Duplikat objek terpilih",
-        "   - Hapus objek terpilih (atau tekan Delete)",
-        "   - Klik warna untuk mengganti sesuai mode",
-        "   - Klik objek untuk memilih",
-        "   - Drag objek dengan mouse"
+        "Tambahkan bentuk dari panel kiri",
+        "Gunakan transformasi untuk memodifikasi objek",
+        "Klik dan drag objek untuk memindahkan",
     ]
     pygame.draw.rect(screen, (230, 230, 230), (720, 20, 400, 450))
     pygame.draw.rect(screen, BLACK, (720, 20, 400, 450), 2)
     for i, text in enumerate(help_texts):
         screen.blit(font.render(text, True, BLACK), (730, 30 + i * 22))
 
+def rotate_point_3d(x, y, z, angle):
+    rad = math.radians(angle)
+    cosa, sina = math.cos(rad), math.sin(rad)
+    return x * cosa + z * sina, y, -x * sina + z * cosa
+
+def project_point(x, y, z):
+    # Proyeksi perspektif sederhana
+    return x - z * 0.5, y - z * 0.3
+
 def draw_star(obj):
     x, y, scale, angle = *obj["pos"], obj["scale"], obj["angle"]
-    points = [ (x + scale * math.cos(math.radians(i * 144 + angle)),
-                y + scale * math.sin(math.radians(i * 144 + angle))) for i in range(5) ]
+    points = [(x + scale * math.cos(math.radians(i * 144 + angle)),
+               y + scale * math.sin(math.radians(i * 144 + angle))) for i in range(5)]
     pygame.draw.polygon(screen, obj["color"], points)
     pygame.draw.polygon(screen, obj["border_color"], points, 2)
 
@@ -115,46 +105,48 @@ def draw_rect(obj):
     pygame.draw.rect(screen, obj["color"], obj["rect"])
     pygame.draw.rect(screen, obj["border_color"], obj["rect"], 2)
 
-def rotate_point_3d(x, y, z, angle):
-    rad = math.radians(angle)
-    cosa, sina = math.cos(rad), math.sin(rad)
-    return x * cosa + z * sina, y, -x * sina + z * cosa
-
-def project_point(x, y, z):
-    return x - z, y - (x + z) / 2
-
 def draw_cone(obj):
     pos, scale, angle = obj["pos"], obj["scale"], obj["angle"]
-    base = [ rotate_point_3d(scale * math.cos(math.radians(i * 360/20)),
-                             0,
-                             scale * math.sin(math.radians(i * 360/20)),
-                             angle) for i in range(20) ]
+    base = [rotate_point_3d(scale * math.cos(math.radians(i * 360 / 20)),
+                            0,
+                            scale * math.sin(math.radians(i * 360 / 20)),
+                            angle) for i in range(20)]
     apex = rotate_point_3d(0, scale * 1.5, 0, angle)
-    base_2d = [ project_point(*pt) for pt in base ]
+    base_2d = [project_point(*pt) for pt in base]
     apex_2d = project_point(*apex)
     base_2d = [(pos[0] + x, pos[1] - y) for x, y in base_2d]
     apex_2d = (pos[0] + apex_2d[0], pos[1] - apex_2d[1])
+
+    # Arsiran sisi-sisi ke apex
+    for pt in base_2d[::2]:
+        pygame.draw.polygon(screen, obj["color"], [apex_2d, pt, base_2d[(base_2d.index(pt) + 2) % len(base_2d)]])
+        pygame.draw.polygon(screen, obj["border_color"], [apex_2d, pt, base_2d[(base_2d.index(pt) + 2) % len(base_2d)]], 1)
+
+    # Dasar lingkaran
     pygame.draw.polygon(screen, obj["color"], base_2d)
     pygame.draw.polygon(screen, obj["border_color"], base_2d, 2)
-    for pt in base_2d:
-        pygame.draw.line(screen, obj["border_color"], apex_2d, pt, 2)
 
 def draw_pyramid(obj):
     pos, scale, angle = obj["pos"], obj["scale"], obj["angle"]
     verts = [
-        (0, scale * 1.5, 0),
+        (0, scale * 1.5, 0),  # apex
         (-scale, 0, -scale),
         (scale, 0, -scale),
-        (0, 0, scale)
+        (scale, 0, scale),
+        (-scale, 0, scale)
     ]
     rot = [rotate_point_3d(*v, angle) for v in verts]
     proj = [project_point(*v) for v in rot]
     proj = [(pos[0] + x, pos[1] - y) for x, y in proj]
+
+    # Sisi segitiga (arsiran)
+    for i in range(1, 5):
+        pygame.draw.polygon(screen, obj["color"], [proj[0], proj[i], proj[i % 4 + 1]])
+        pygame.draw.polygon(screen, obj["border_color"], [proj[0], proj[i], proj[i % 4 + 1]], 2)
+
+    # Dasar limas
     pygame.draw.polygon(screen, obj["color"], proj[1:])
     pygame.draw.polygon(screen, obj["border_color"], proj[1:], 2)
-    for i in range(1, 4):
-        pygame.draw.polygon(screen, obj["color"], [proj[0], proj[i], proj[1 if i == 3 else i + 1]])
-        pygame.draw.polygon(screen, obj["border_color"], [proj[0], proj[i], proj[1 if i == 3 else i + 1]], 2)
 
 def handle_action(action):
     global selected_index, selected_color_type
@@ -207,6 +199,7 @@ def handle_action(action):
             objects.pop(selected_index)
             selected_index = len(objects) - 1 if objects else -1
 
+# Game loop utama
 running = True
 while running:
     screen.fill(WHITE)
@@ -258,6 +251,7 @@ while running:
     draw_buttons()
     draw_color_choices()
     draw_help_panel()
+
     for obj in objects:
         if obj["type"] == "star": draw_star(obj)
         elif obj["type"] == "oval": draw_oval(obj)
